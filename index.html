@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Image to WebP Converter</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JSZip CDN for Bulk Download -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center py-10 px-4">
+
+    <!-- Container -->
+    <div class="w-full max-w-4xl mx-auto space-y-8">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <div class="inline-flex items-center justify-center p-3 bg-indigo-600/10 rounded-2xl border border-indigo-500/20 text-indigo-400 mb-2">
+                <i data-lucide="zap" class="w-8 h-8"></i>
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight text-white">Ultimate WebP Converter</h1>
+            <p class="text-slate-400 text-sm max-w-md mx-auto">Convert PNG, JPEG, and other images to modern WebP format instantly with zero quality loss.</p>
+        </div>
+
+        <!-- Controls / Settings Bar -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-medium text-slate-300">Quality:</span>
+                <input type="range" id="qualityRange" min="0.5" max="1" step="0.05" value="0.85" 
+                    class="w-32 accent-indigo-500 cursor-pointer">
+                <span id="qualityVal" class="text-xs font-semibold bg-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-md border border-indigo-500/30">85%</span>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <input type="url" id="imageUrlInput" placeholder="Paste image URL here..." 
+                    class="bg-slate-950 border border-slate-800 text-sm rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 flex-1 sm:w-64">
+                <button id="loadUrlBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition duration-200 flex items-center gap-1.5 cursor-pointer">
+                    <i data-lucide="link" class="w-4 h-4"></i> Add URL
+                </button>
+            </div>
+        </div>
+
+        <!-- Dropzone / Upload Area -->
+        <div id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 bg-slate-900/50 hover:bg-slate-900 rounded-3xl p-10 text-center cursor-pointer transition duration-300 relative group">
+            <input type="file" id="fileInput" multiple accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+            <div class="flex flex-col items-center justify-center space-y-4 pointer-events-none">
+                <div class="p-4 bg-indigo-600/10 group-hover:bg-indigo-600/20 rounded-full text-indigo-400 transition duration-300">
+                    <i data-lucide="upload-cloud" class="w-10 h-10"></i>
+                </div>
+                <div class="space-y-1">
+                    <p class="text-base font-semibold text-slate-200">Drag & Drop images here, or <span class="text-indigo-400 underline">browse</span></p>
+                    <p class="text-xs text-slate-400">Supports JPG, PNG, WEBP, BMP, GIF (Tip: You can also <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">Ctrl + V</kbd> paste anywhere)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Bar (Bulk Download / Clear) -->
+        <div id="actionBar" class="hidden flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+            <div class="text-sm text-slate-300 font-medium">
+                Converted <span id="totalCount" class="text-indigo-400 font-bold">0</span> images successfully
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="clearAllBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium px-4 py-2 rounded-xl transition duration-200 cursor-pointer">
+                    Clear All
+                </button>
+                <button id="downloadAllBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition duration-200 flex items-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer">
+                    <i data-lucide="download-cloud" class="w-4 h-4"></i> Download All (.zip)
+                </button>
+            </div>
+        </div>
+
+        <!-- Converted List Container -->
+        <div id="outputList" class="space-y-3">
+            <!-- Dynamic Cards will appear here -->
+        </div>
+
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        lucide.createIcons();
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const outputList = document.getElementById('outputList');
+        const qualityRange = document.getElementById('qualityRange');
+        const qualityVal = document.getElementById('qualityVal');
+        const actionBar = document.getElementById('actionBar');
+        const totalCount = document.getElementById('totalCount');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const imageUrlInput = document.getElementById('imageUrlInput');
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+
+        let convertedFiles = [];
+
+        // Quality Slider UI update
+        qualityRange.addEventListener('input', (e) => {
+            const val = Math.round(e.target.value * 100);
+            qualityVal.innerText = `${val}%`;
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            fileInput.value = '';
+        });
+
+        // Drag and Drop events
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-slate-900');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-slate-900');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+
+        // Global Paste Event (Ctrl + V)
+        window.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            const files = [];
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            if (files.length > 0) {
+                handleFiles(files);
+            }
+        });
+
+        // Load image from URL
+        loadUrlBtn.addEventListener('click', async () => {
+            const url = imageUrlInput.value.trim();
+            if (!url) return;
+            
+            try {
+                loadUrlBtn.innerText = "Loading...";
+                const response = await fetch(url);
+                const blob = await response.blob();
+                if (!blob.type.startsWith('image/')) {
+                    alert('URL did not return a valid image.');
+                    return;
+                }
+                const filename = url.split('/').pop().split('?')[0] || 'pasted-image.jpg';
+                const file = new File([blob], filename, { type: blob.type });
+                handleFiles([file]);
+                imageUrlInput.value = '';
+            } catch (err) {
+                alert('Failed to load image from URL. It might be blocked by CORS policy.');
+            } finally {
+                loadUrlBtn.innerHTML = `<i data-lucide="link" class="w-4 h-4"></i> Add URL`;
+                lucide.createIcons();
+            }
+        });
+
+        // Handle files processing
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                convertToWebP(file);
+            });
+        }
+
+        // Core Conversion Function
+        function convertToWebP(file) {
+            const reader = new FileReader();
+            const quality = parseFloat(qualityRange.value);
+
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    canvas.toBlob((blob) => {
+                        const originalSize = file.size;
+                        const newSize = blob.size;
+                        const savings = Math.max(0, ((1 - newSize / originalSize) * 100)).toFixed(1);
+
+                        const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                        const newFileName = `${originalNameWithoutExt}.webp`;
+
+                        const fileObj = {
+                            id: Math.random().toString(36.substring(2, 9)),
+                            name: newFileName,
+                            originalSize: formatBytes(originalSize),
+                            newSize: formatBytes(newSize),
+                            savings: savings,
+                            url: URL.createObjectURL(blob),
+                            blob: blob
+                        };
+
+                        convertedFiles.unshift(fileObj);
+                        renderUI();
+                    }, 'image/webp', quality);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Format byte size helper
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // Render UI List
+        function renderUI() {
+            if (convertedFiles.length > 0) {
+                actionBar.classList.remove('hidden');
+                actionBar.classList.add('flex');
+                totalCount.innerText = convertedFiles.length;
+            } else {
+                actionBar.classList.add('hidden');
+                actionBar.classList.remove('flex');
+            }
+
+            outputList.innerHTML = '';
+            convertedFiles.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md transition-all hover:border-slate-700";
+                
+                card.innerHTML = `
+                    <div class="flex items-center gap-4 w-full sm:w-auto">
+                        <img src="${item.url}" class="w-16 h-16 object-cover rounded-xl border border-slate-800 shrink-0">
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-sm font-semibold text-white truncate max-w-xs">${item.name}</h4>
+                            <div class="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                <span class="line-through text-slate-500">${item.originalSize}</span>
+                                <span>→</span>
+                                <span class="text-emerald-400 font-medium">${item.newSize}</span>
+                                <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[10px] font-bold">-${item.savings}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <a href="${item.url}" download="${item.name}" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-4 py-2 rounded-xl transition duration-200 flex items-center gap-1.5 w-full sm:w-auto justify-center cursor-pointer">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Download
+                        </a>
+                        <button onclick="removeItem('${item.id}')" class="p-2 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 rounded-xl transition duration-200 cursor-pointer">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+                outputList.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // Remove single item
+        window.removeItem = function(id) {
+            convertedFiles = convertedFiles.filter(f => f.id !== id);
+            renderUI();
+        }
+
+        // Clear All
+        clearAllBtn.addEventListener('click', () => {
+            convertedFiles = [];
+            renderUI();
+        });
+
+        // Bulk Download All as ZIP
+        downloadAllBtn.addEventListener('click', async () => {
+            if (convertedFiles.length === 0) return;
+            
+            downloadAllBtn.innerText = "Creating Zip...";
+            const zip = new JSZip();
+            
+            convertedFiles.forEach((file, index) => {
+                zip.file(file.name, file.blob);
+            });
+
+            const content = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "converted-webp-images.zip";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            downloadAllBtn.innerHTML = `<i data-lucide="download-cloud" class="w-4 h-4"></i> Download All (.zip)`;
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
